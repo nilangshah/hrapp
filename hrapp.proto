@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+service hrapp{
+    rpc getEmployee(EmployeeId) returns (Employee);
+}
+
+message EmployeeId{
+    int64 id =1;
+}
+
+message Employee{
+    int64 id=1;
+    string name = 2;
+    string title = 3;
+    repeated int64 reports = 4;
+}
