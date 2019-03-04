@@ -11,6 +11,7 @@ import (
 	"net/http"
 )
 
+//Admin server struct
 type AdminServer struct {
 	Logger            *zap.Logger
 	adminHTTPServer   *http.Server
@@ -20,14 +21,17 @@ type AdminServer struct {
 	config            *AdminConfig
 }
 
+//Admin server configuration
 type AdminConfig struct {
 	ListenAddress string `config:"listen-address"`
 }
 
-func NewServer(listenAddress *string) *AdminServer {
-	return &AdminServer{config: &AdminConfig{*listenAddress}, Health: true, adminStoppedEvent: make(chan error, 1)}
+//Create instance of admin server
+func NewServer(config *AdminConfig) *AdminServer {
+	return &AdminServer{config: config, Health: true, adminStoppedEvent: make(chan error, 1)}
 }
 
+//Interface method to initialize admin server
 func (s *AdminServer) Init(logger *zap.Logger) error {
 	s.Logger = logger
 	s.Logger.Info("Admin: Initializing Admin framework")
@@ -43,18 +47,20 @@ func (s *AdminServer) Init(logger *zap.Logger) error {
 		Addr:    s.config.ListenAddress,
 		Handler: router,
 	}
-
 	return nil
 }
 
+//Interface method to run admin server
 func (s *AdminServer) Run() {
 	s.startAdmin()
 }
 
+//Interface method to gracefully shutdown admin server
 func (s *AdminServer) Shutdown() {
 	s.stopAdmin()
 }
 
+//Start admin server
 func (s *AdminServer) startAdmin() {
 	if s.adminHTTPServer != nil {
 		s.Logger.Info("Admin: Started admin")
@@ -66,6 +72,7 @@ func (s *AdminServer) startAdmin() {
 	return
 }
 
+//Gracefully stop admin server
 func (s *AdminServer) stopAdmin() {
 	s.Logger.Info("Admin: Stopping adminserver")
 	if s.adminHTTPServer != nil {
@@ -78,6 +85,7 @@ func (s *AdminServer) stopAdmin() {
 	s.Logger.Info("Admin: Stopped adminserver")
 }
 
+//Compute and return health of admin server
 func (s *AdminServer) health(c *gin.Context) {
 	if s.Health {
 		c.Status(http.StatusOK)
@@ -88,10 +96,12 @@ func (s *AdminServer) health(c *gin.Context) {
 	}
 }
 
+//Wrapper on ap logger to log gin logs
 type writer struct {
 	logger *zap.Logger
 }
 
+//Write bytes using logger.Info()
 func (w *writer) Write(p []byte) (int, error) {
 	p = bytes.TrimSpace(p)
 	w.logger.Info(string(p))

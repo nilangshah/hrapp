@@ -18,9 +18,13 @@ import (
 	"time"
 )
 
-var svcAddr = flag.String("connect-addr", "127.0.0.1:8085", "The address to listen on for gRPC requests.")
-var empid = flag.Int64("empid", 1, "The address to listen on for gRPC requests.")
+var svcAddr = flag.String("connect-addr", "mydomain.com:8086", "The address to listen on for gRPC requests.")
+var empId = flag.Int64("empid", 1, "EmployeeId to print reporting structure for")
 var pretty = flag.Bool("pretty", false, "Print output in pretty JSON")
+var tlsEnabled = flag.Bool("tls-enabled", true, "Connect hrapp service over tls")
+var certPath = flag.String("certpath", "client/certs/127.0.0.1.crt", "Run gRPC service over tls")
+var keyPath = flag.String("keypath", "client/certs/127.0.0.1.key", "Run gRPC service over tls")
+var caPath = flag.String("capath", "client/certs/root-ca.crt", "Run gRPC service over tls")
 
 var wait sync.WaitGroup
 
@@ -32,25 +36,33 @@ type EmpHierarchy struct {
 }
 
 var result sync.Map
-
 var logger *zap.Logger
 var err error
 
 func main() {
 	flag.Parse()
+
 	logger, err = zap.NewProduction()
-	logger.Info("Flags", zap.String("connect-addr", *svcAddr), zap.Int64("empid", *empid), zap.Bool("pretty", *pretty))
+	logger.Info("Flags", zap.String("connect-addr", *svcAddr), zap.Int64("empid", *empId), zap.Bool("pretty", *pretty), zap.Bool("tls-enabled", *tlsEnabled), zap.Strings("cert,key,ca", []string{*certPath, *keyPath, *caPath}))
 	if err != nil {
 		fmt.Printf("Error occured while creating logger")
 		os.Exit(1)
 	}
+
 	startTime := time.Now()
-	client := createHrAppClient(svcAddr)
+
+	clientConn := creategRPCClient(svcAddr)
+	defer clientConn.Close()
+	hrappClient := h.NewHrappClient(clientConn)
 	wait.Add(1)
-	fetch(1, client)
+
+	getEmployee(1, hrappClient)
+
 	wait.Wait()
+
 	logger.Info("Time taken to fetch employee data", zap.Duration("latency", time.Since(startTime)))
-	ans := printResult(*empid)
+
+	ans := buildReporting(*empId)
 	var b []byte
 	var err error
 	if *pretty {
@@ -64,9 +76,10 @@ func main() {
 		return
 	}
 	fmt.Println(string(b))
-	//logger.Info("\n Final %v", ans)
 }
-func printResult(i int64) *EmpHierarchy {
+
+//build reporting hierarchy
+func buildReporting(i int64) *EmpHierarchy {
 	ans := &EmpHierarchy{}
 	res, found := result.Load(i)
 	if found {
@@ -75,49 +88,65 @@ func printResult(i int64) *EmpHierarchy {
 		ans.Title = res.(*h.Employee).Title
 		ans.Reports = []*EmpHierarchy{}
 		for _, report := range res.(*h.Employee).Reports {
-			ans.Reports = append(ans.Reports, printResult(report))
+			ans.Reports = append(ans.Reports, buildReporting(report))
 		}
 	}
 	return ans
 }
 
-func createHrAppClient(addr *string) h.HrappClient {
+//Create gRPC client connection to gRPC service
+func creategRPCClient(addr *string) *grpc.ClientConn {
 	//init certs
-	certificate, err := tls.LoadX509KeyPair(
-		"client/certs/127.0.0.1.crt",
-		"client/certs/127.0.0.1.key",
-	)
-	certPool := x509.NewCertPool()
-	bs, err := ioutil.ReadFile("client/certs/My_Root_CA.crt")
-	if err != nil {
-		logger.Error("failed to read ca cert: %s", zap.Error(err))
-	}
-	ok := certPool.AppendCertsFromPEM(bs)
-	if !ok {
-		logger.Error("failed to append certs")
-	}
-	transportCreds := credentials.NewTLS(&tls.Config{
-		Certificates: []tls.Certificate{certificate},
-		RootCAs:      certPool,
-	})
+	if *tlsEnabled {
+		certificate, err := tls.LoadX509KeyPair(
+			*certPath,
+			*keyPath,
+		)
+		certPool := x509.NewCertPool()
+		bs, err := ioutil.ReadFile(*caPath)
+		if err != nil {
+			logger.Error("failed to read ca cert: %s", zap.Error(err))
+		}
+		ok := certPool.AppendCertsFromPEM(bs)
+		if !ok {
+			logger.Error("failed to append certs")
+		}
+		transportCreds := credentials.NewTLS(&tls.Config{
+			Certificates: []tls.Certificate{certificate},
+			RootCAs:      certPool,
+		})
 
-	clientConnection, err := grpc.Dial(*addr, grpc.WithTransportCredentials(transportCreds), grpc.WithBalancerName(roundrobin.Name))
-	if err != nil {
-		logger.Error("gRPCClient: error occured whilecreating hrApp client", zap.Error(err))
+		clientConnection, err := grpc.Dial(*addr, grpc.WithTransportCredentials(transportCreds), grpc.WithBalancerName(roundrobin.Name))
+		if err != nil {
+			logger.Error("gRPCClient: error occured whilecreating hrApp client", zap.Error(err))
+		}
+		return clientConnection
+	} else {
+		clientConnection, err := grpc.Dial(*addr, grpc.WithInsecure(), grpc.WithBalancerName(roundrobin.Name))
+		if err != nil {
+			logger.Error("gRPCClient: error occured whilecreating hrApp client", zap.Error(err))
+		}
+		return clientConnection
 	}
-	return h.NewHrappClient(clientConnection)
+
 }
-func fetch(empId int64, client h.HrappClient) {
+
+//Fetch employee details for given employeeId by calling gRPC server
+func getEmployee(empId int64, client h.HrappClient) {
 	defer wait.Done()
 	response, err := client.GetEmployee(context.Background(), &h.EmployeeId{Id: empId})
+	if err != nil {
+		fmt.Println(err.Error())
+		logger.Error("Error occured while gRPC service call", zap.Error(err))
+		os.Exit(1)
+	}
 	result.Store(empId, response)
 	wait.Add(len(response.Reports))
 	for _, emp := range response.Reports {
-		go fetch(emp, client)
+		go getEmployee(emp, client)
 	}
 
 	if err != nil {
 		logger.Error("Error occured while fetching employee data", zap.Error(err))
 	}
-
 }

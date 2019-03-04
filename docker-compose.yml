@@ -1,0 +1,23 @@
+version: '3.7'
+services:
+  hrapp:
+    environment:
+    - SERVICE_NAME=hrapp
+    - SERVICE_VERSION=v1-0
+    build: .
+    image: hrapp:latest
+    extra_hosts:
+      mydomain.com: 127.0.0.1
+    init: true
+    ports:
+    - "8080:8080"
+    entrypoint:
+    - /opt/app/hrapp/bin/hrapp
+    - -cassandra-addr=cassandra:9042
+    - -tls-enabled=True
+    - -certpath=/opt/app/hrapp/certs/mydomain.com.crt
+    - -keypath=/opt/app/hrapp/certs/mydomain.com.key
+    - -capath=/opt/app/hrapp/certs/root-ca.crt
+    - -admin-address=:8080
+  cassandra:
+    image: cassandra:latest
