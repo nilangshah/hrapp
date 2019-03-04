@@ -93,7 +93,9 @@ http(mydomain.com:8080)
 * [protobuf](https://github.com/golang/protobuf) - Data interchange format
 * [gin-http](https://github.com/gin-gonic/gin) - HTTP web framework written in Go
 * [gocql](https://github.com/gocql/gocql) - Cassandra client library in fo
-
+* [zap](https://github.com/uber-go/zap) - High performant logger library in go
+* [prometheus-client](https://github.com/prometheus/client_golang) - Instrumentation library for prometheus based metrics
+* [errors](https://github.com/pkg/errors) - Error handling primitives
 ## Authors
 
 **Nilang Shah**
