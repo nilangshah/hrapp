@@ -58,9 +58,9 @@ http(mydomain.com:8080)
 | empid| Reporting structure will be print for given empid |1|
 | pretty | Print output in pretty JSON | false |
 |tls-enabled|Connect hrapp service over tls| true|
-| certpath | Client certificate path | grpcserver/certs/127.0.0.1.crt|
-| keypath | Client key path | grpcserver/certs/127.0.0.1.key|
-| capath |  CA certificate path | grpcserver/certs/root-ca.crt|
+| certpath | Client certificate path | client/certs/127.0.0.1.crt|
+| keypath | Client key path | client/certs/127.0.0.1.key|
+| capath |  CA certificate path | client/certs/root-ca.crt|
 
 ## Running the Application
 
