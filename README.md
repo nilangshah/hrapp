@@ -1,4 +1,4 @@
-#HrApp
+# HrApp
 Its an application which has 2 components
 1. gRPC service endpoint to return employee details based on input employeeId
 2. A client which connects to gRPC service and fetches employee details and reportee hierarchy
