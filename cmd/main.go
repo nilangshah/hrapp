@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"github.com/nilangshah/hrapp"
 	"github.com/nilangshah/hrapp/admin"
 	"github.com/nilangshah/hrapp/cassandra"
@@ -20,7 +19,6 @@ var cassandraAddr = flag.String("cassandra-addr", "127.0.0.1:9042", "Cassandra c
 
 func main() {
 	flag.Parse()
-	flag.VisitAll(func(f *flag.Flag) { fmt.Println(f.Name, f.Value) })
 
 	serviceImplConfig := &hrapp.ServiceImplConfig{DBConfig: &cassandra.CassandraConfig{*cassandraAddr, "hrapp", "ONE"}}
 	serviceImpl := hrapp.NewServiceImpl(serviceImplConfig)

@@ -32,6 +32,8 @@ var caPath = flag.String("capath", "client/certs/root-ca.crt", "Run gRPC service
 
 var wait sync.WaitGroup
 
+var reporting *EmpHierarchy
+
 type EmpHierarchy struct {
 	Id      int64           `json:"id"`
 	Name    string          `json:"name"`
@@ -67,84 +69,6 @@ func testSetup() {
 
 	serviceImpl = NewServiceImpl(serviceImplConfig)
 
-}
-
-// from fib_test.go
-func BenchmarkFetch(bb *testing.B) {
-	// run the Fib function b.N times
-	for n := 0; n < bb.N; n++ {
-		client := createHrAppClient(svcAddr)
-		wait.Add(1)
-		fetch(1, client)
-		wait.Wait()
-	}
-	ans := printResult(1)
-	_, err := json.Marshal(ans)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	//fmt.Println(string(b))
-}
-
-func createHrAppClient(addr *string) HrappClient {
-	//init certs
-	certificate, err := tls.LoadX509KeyPair(
-		*certPath,
-		*keyPath,
-	)
-	certPool := x509.NewCertPool()
-	bs, err := ioutil.ReadFile(*caPath)
-	if err != nil {
-		logger.Error("failed to read ca cert: %s", zap.Error(err))
-	}
-	ok := certPool.AppendCertsFromPEM(bs)
-	if !ok {
-		logger.Error("failed to append certs")
-	}
-	transportCreds := credentials.NewTLS(&tls.Config{
-		Certificates: []tls.Certificate{certificate},
-		RootCAs:      certPool,
-	})
-
-	clientConnection, err := grpc.Dial(*addr, grpc.WithTransportCredentials(transportCreds), grpc.WithBalancerName(roundrobin.Name))
-	if err != nil {
-		logger.Error("gRPCClient: error occured whilecreating hrApp client", zap.Error(err))
-	}
-	return NewHrappClient(clientConnection)
-}
-func fetch(empId int64, client HrappClient) {
-	defer wait.Done()
-	response, err := client.GetEmployee(context.Background(), &EmployeeId{Id: empId})
-	if err != nil {
-		fmt.Println(err.Error())
-		logger.Error("Error occured while gRPC service call", zap.Error(err))
-		os.Exit(1)
-	}
-	result.Store(empId, response)
-	wait.Add(len(response.Reports))
-	for _, emp := range response.Reports {
-		go fetch(emp, client)
-	}
-
-	if err != nil {
-		logger.Error("Error occured while fetching employee data", zap.Error(err))
-	}
-}
-
-func printResult(i int64) *EmpHierarchy {
-	ans := &EmpHierarchy{}
-	res, found := result.Load(i)
-	if found {
-		ans.Id = i
-		ans.Name = res.(*Employee).Name
-		ans.Title = res.(*Employee).Title
-		ans.Reports = []*EmpHierarchy{}
-		for _, report := range res.(*Employee).Reports {
-			ans.Reports = append(ans.Reports, printResult(report))
-		}
-	}
-	return ans
 }
 
 func TestServiceImpl(t *testing.T) {
@@ -196,7 +120,7 @@ func TestServiceImpl(t *testing.T) {
 		t.Error("Error occurred while getemployee")
 	}
 	assert.Equal(t, employee1, emp)
-
+	t.Log("Employee: ", emp)
 	emp, err = serviceImpl.GetEmployee(context.Background(), empId2)
 	if err != nil {
 		t.Error("Error occurred while getemployee")
@@ -206,3 +130,97 @@ func TestServiceImpl(t *testing.T) {
 	t.Log("Employee: ", emp)
 	serviceImpl.ShutDown()
 }
+
+func BenchmarkFetch(bb *testing.B) {
+	var ans *EmpHierarchy
+	for n := 0; n < bb.N; n++ {
+		client := creategRPCClient(svcAddr)
+		defer client.Close()
+		wait.Add(1)
+		getEmployee(1, NewHrappClient(client))
+		wait.Wait()
+		ans = buildReporting(1)
+	}
+	reporting = ans
+	_, err := json.Marshal(reporting)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	//fmt.Println(string(b))
+}
+
+//build reporting hierarchy
+func buildReporting(i int64) *EmpHierarchy {
+	ans := &EmpHierarchy{}
+	res, found := result.Load(i)
+	if found {
+		ans.Id = i
+		ans.Name = res.(*Employee).Name
+		ans.Title = res.(*Employee).Title
+		ans.Reports = make([]*EmpHierarchy,len(res.(*Employee).Reports))
+		for i, report := range res.(*Employee).Reports {
+			ans.Reports[i] = buildReporting(report)
+		}
+	}
+	return ans
+}
+
+//Create gRPC client connection to gRPC service
+func creategRPCClient(addr *string) *grpc.ClientConn {
+	//init certs
+	if *tlsEnabled {
+		certificate, err := tls.LoadX509KeyPair(
+			*certPath,
+			*keyPath,
+		)
+		certPool := x509.NewCertPool()
+		bs, err := ioutil.ReadFile(*caPath)
+		if err != nil {
+			logger.Error("failed to read ca cert: %s", zap.Error(err))
+		}
+		ok := certPool.AppendCertsFromPEM(bs)
+		if !ok {
+			logger.Error("failed to append certs")
+		}
+		transportCreds := credentials.NewTLS(&tls.Config{
+			Certificates: []tls.Certificate{certificate},
+			RootCAs:      certPool,
+		})
+
+		clientConnection, err := grpc.Dial(*addr, grpc.WithTransportCredentials(transportCreds), grpc.WithBalancerName(roundrobin.Name))
+		if err != nil {
+			logger.Error("gRPCClient: error occured whilecreating hrApp client", zap.Error(err))
+		}
+		return clientConnection
+	} else {
+		clientConnection, err := grpc.Dial(*addr, grpc.WithInsecure(), grpc.WithBalancerName(roundrobin.Name))
+		if err != nil {
+			logger.Error("gRPCClient: error occured whilecreating hrApp client", zap.Error(err))
+		}
+		return clientConnection
+	}
+
+}
+
+//Fetch employee details for given employeeId by calling gRPC server
+func getEmployee(empId int64, client HrappClient) {
+	defer wait.Done()
+	response, err := client.GetEmployee(context.Background(), &EmployeeId{Id: empId})
+	if err != nil {
+		fmt.Println(err.Error())
+		logger.Error("Error occured while gRPC service call", zap.Error(err))
+		os.Exit(1)
+	}
+	result.Store(empId, response)
+	wait.Add(len(response.Reports))
+	for _, emp := range response.Reports {
+		go getEmployee(emp, client)
+	}
+
+	if err != nil {
+		logger.Error("Error occured while fetching employee data", zap.Error(err))
+	}
+}
+
+
