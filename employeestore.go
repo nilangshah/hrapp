@@ -47,7 +47,7 @@ func EmployeeStoreInit(logger *zap.Logger, config *c.CassandraConfig) (EmployeeS
 		[]string{"method"},
 	)
 	prometheus.MustRegister(reqCount, reqLatency)
-	if cassandra.Health() {
+	if cassandra !=nil && cassandra.Health() {
 		impl.dbSession = cassandra
 		logger.Info("DataAccess: Database session initialized successfully")
 		return impl, nil

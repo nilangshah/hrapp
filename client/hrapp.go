@@ -86,9 +86,9 @@ func buildReporting(i int64) *EmpHierarchy {
 		ans.Id = i
 		ans.Name = res.(*h.Employee).Name
 		ans.Title = res.(*h.Employee).Title
-		ans.Reports = []*EmpHierarchy{}
-		for _, report := range res.(*h.Employee).Reports {
-			ans.Reports = append(ans.Reports, buildReporting(report))
+		ans.Reports = make([]*EmpHierarchy,len(res.(*h.Employee).Reports))
+		for j, report := range res.(*h.Employee).Reports {
+			ans.Reports[j]= buildReporting(report)
 		}
 	}
 	return ans

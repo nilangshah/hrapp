@@ -57,7 +57,7 @@ func NewServer(config *GRPCConfig, impl GRPCImpl) *Server {
 // Init the server with the config
 func (s *Server) Init(logger *zap.Logger) error {
 	s.logger = logger
-	grpclog.SetLogger(zapgrpc.NewLogger(s.logger))
+	grpclog.SetLogger(zapgrpc.NewLogger(s.logger)) //zapgrpc yet to support loggerV2
 	if s.config.TlsConfig.TlsEnabled {
 		s.logger.Info("gRPCServer: tls enabled, configuring server over tls mutual auth")
 		//Initialize certs
